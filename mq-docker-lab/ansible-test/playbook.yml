@@ -1,0 +1,17 @@
+---
+# Uso:
+#   ansible-playbook playbook.yml                       -> migra todos os QMs
+#   ansible-playbook playbook.yml -e "qm_filter=PVCL03"  -> migra só um
+- name: Teste de migração MQ via docker exec (sem SSH)
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: Processar cada Queue Manager
+      ansible.builtin.include_tasks: tasks/migrate_qm.yml
+      loop: "{{ qm_definitions | dict2items }}"
+      loop_control:
+        loop_var: qm_entry
+        label: "{{ qm_entry.key }}"
+      when: qm_filter is not defined or qm_entry.key == qm_filter

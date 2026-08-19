@@ -1,0 +1,83 @@
+version: "3.8"
+
+networks:
+  mqnet:
+    driver: bridge
+
+volumes:
+  qm1data:
+  qm2data:
+  jenkins_home:
+
+services:
+
+  # ------------------------------------------------------------------
+  # Queue Manager de ORIGEM (servidor antigo, simulado)
+  # ------------------------------------------------------------------
+  qm1:
+    image: ibmcom/mq:9.2.4.0-r1
+    container_name: qm1
+    hostname: qm1
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PBO11
+      MQ_APP_PASSWORD: passw0rd
+      MQ_ADMIN_PASSWORD: passw0rd
+    ports:
+      - "1414:1414"   # canal MQ
+      - "9443:9443"   # console web (https://localhost:9443/ibmmq/console)
+    volumes:
+      - qm1data:/mnt/mqm
+    networks:
+      - mqnet
+    healthcheck:
+      test: ["CMD", "chkmqready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # ------------------------------------------------------------------
+  # Queue Manager de DESTINO (servidor novo)
+  # ------------------------------------------------------------------
+  qm2:
+    image: ibmcom/mq:9.2.4.0-r1
+    container_name: qm2
+    hostname: qm2
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PBO12
+      MQ_APP_PASSWORD: passw0rd
+      MQ_ADMIN_PASSWORD: passw0rd
+    ports:
+      - "1415:1414"
+      - "9444:9443"   # console web (https://localhost:9444/ibmmq/console)
+    volumes:
+      - qm2data:/mnt/mqm
+    networks:
+      - mqnet
+    healthcheck:
+      test: ["CMD", "chkmqready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # ------------------------------------------------------------------
+  # Jenkins - orquestra o dump/transferência/import via docker exec
+  # ------------------------------------------------------------------
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # Permite ao Jenkins rodar "docker exec" nos containers qm1/qm2
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mqnet
+    depends_on:
+      - qm1
+      - qm2

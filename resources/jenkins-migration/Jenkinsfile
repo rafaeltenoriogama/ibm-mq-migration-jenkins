@@ -1,0 +1,88 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'QMGR_SRC', defaultValue: 'PBO11', description: 'Queue manager de origem')
+        string(name: 'QMGR_TGT', defaultValue: 'PBO12', description: 'Queue manager de destino')
+        string(name: 'CONTAINER_SRC', defaultValue: 'qm1', description: 'Container Docker de origem')
+        string(name: 'CONTAINER_TGT', defaultValue: 'qm2', description: 'Container Docker de destino')
+    }
+
+    environment {
+        DUMP_FILE   = "${params.QMGR_SRC}_dump.mqsc"
+        IMPORT_LOG  = "import_${params.QMGR_TGT}.log"
+    }
+
+    stages {
+
+        stage('Dump dos objetos (origem)') {
+            steps {
+                echo "Gerando dump de ${params.QMGR_SRC} via dmpmqcfg..."
+                sh """
+                    docker exec ${params.CONTAINER_SRC} bash -c \
+                        "dmpmqcfg -m ${params.QMGR_SRC} -a -o mqsc" > ${DUMP_FILE}
+                """
+                sh "wc -l ${DUMP_FILE}"
+            }
+        }
+
+        stage('Arquivar dump') {
+            steps {
+                archiveArtifacts artifacts: "${DUMP_FILE}", fingerprint: true
+            }
+        }
+
+        stage('Aprovacao manual') {
+            steps {
+                input message: "Aplicar dump de ${params.QMGR_SRC} em ${params.QMGR_TGT}?", ok: 'Aplicar'
+            }
+        }
+
+        stage('Transferir dump para destino') {
+            steps {
+                echo "Copiando ${DUMP_FILE} para o container ${params.CONTAINER_TGT}..."
+                sh "docker cp ${DUMP_FILE} ${params.CONTAINER_TGT}:/tmp/${DUMP_FILE}"
+            }
+        }
+
+        stage('Importar no destino') {
+            steps {
+                echo "Importando objetos em ${params.QMGR_TGT}..."
+                sh """
+                    docker exec ${params.CONTAINER_TGT} bash -c \
+                        "runmqsc ${params.QMGR_TGT} < /tmp/${DUMP_FILE}" | tee ${IMPORT_LOG}
+                """
+            }
+        }
+
+        stage('Validar log de import') {
+            steps {
+                script {
+                    def errors = sh(
+                        script: "grep -E 'AMQ[0-9]+E' ${IMPORT_LOG} || true",
+                        returnStdout: true
+                    ).trim()
+
+                    if (errors) {
+                        echo "Erros encontrados no import:\n${errors}"
+                        error("Import de ${params.QMGR_TGT} terminou com erros. Ver ${IMPORT_LOG}.")
+                    } else {
+                        echo "Import concluido sem erros AMQ*E."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: "${IMPORT_LOG}", allowEmptyArchive: true
+        }
+        success {
+            echo "Migracao de ${params.QMGR_SRC} -> ${params.QMGR_TGT} concluida com sucesso."
+        }
+        failure {
+            echo "Pipeline falhou. Verifique os artefatos arquivados para diagnostico."
+        }
+    }
+}

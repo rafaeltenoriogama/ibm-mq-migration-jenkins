@@ -1,0 +1,25 @@
+services:
+  jenkins:
+    build:
+      context: .
+      args:
+        DOCKER_GID: ${DOCKER_GID:-999}
+    container_name: jenkins-mq
+    ports:
+      - "8080:8080"   # interface web
+      - "50000:50000" # agentes remotos (não usamos agora, mas é padrão)
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # Permite o Jenkins falar com o Docker do HOST (mesmo daemon que
+      # roda os containers do mq-docker-lab), sem precisar de Docker
+      # dentro do Docker.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - jenkins_net
+
+volumes:
+  jenkins_home:
+
+networks:
+  jenkins_net:
+    driver: bridge

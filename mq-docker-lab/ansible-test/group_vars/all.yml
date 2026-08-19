@@ -1,0 +1,27 @@
+---
+mq_objects:
+  - { flag: t, value: channel }
+  - { flag: t, value: queue }
+  - { flag: t, value: topic }
+  - { flag: x, value: sub }
+  - { flag: t, value: listener }
+  - { flag: t, value: authinfo }
+
+dump_local_dir: /tmp/mq_dumps
+target_dump_dir: /tmp/mq_incoming
+
+# Neste lab, cada QM está em UM container só (não multi-instance),
+# então cada lista tem 1 item - já corresponde ao nome do container.
+qm_definitions:
+  PVCL01:
+    source_hosts: [melpmqs017]
+    target_hosts: [slpcfrbiwms6158]
+  PVCL02:
+    source_hosts: [melpmqs018]
+    target_hosts: [slpcfrbiwms9658]
+  PVCL03:
+    source_hosts: [melpmqs019]
+    target_hosts: [slpcfrbiwms4101]
+  PVCL04:
+    source_hosts: [melpmqs020]
+    target_hosts: [slpcfrbiwms5469]

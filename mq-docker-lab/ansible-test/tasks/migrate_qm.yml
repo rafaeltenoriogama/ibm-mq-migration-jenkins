@@ -1,0 +1,97 @@
+---
+- name: Definir variáveis do QM atual
+  ansible.builtin.set_fact:
+    qm_name: "{{ qm_entry.key }}"
+    source_host: "{{ qm_entry.value.source_hosts[0] }}"
+    target_host: "{{ qm_entry.value.target_hosts[0] }}"
+
+# ---------------------------------------------------------
+# Filtro de tipos de objeto. Por padrão migra tudo (mq_objects
+# inteiro). Para migrar só alguns tipos, passe na linha de comando:
+#   -e "object_filter=queue"
+#   -e "object_filter=queue,channel"
+# Os nomes válidos são os mesmos de mq_objects: channel, queue,
+# topic, sub, listener, authinfo.
+# ---------------------------------------------------------
+- name: Definir quais tipos de objeto processar
+  ansible.builtin.set_fact:
+    objects_to_process: >-
+      {{
+        mq_objects
+        if object_filter is not defined
+        else mq_objects | selectattr('value', 'in', object_filter.split(',') | map('trim') | map('lower') | list) | list
+      }}
+
+- name: "[{{ qm_name }}] Iniciando migração: {{ source_host }} -> {{ target_host }}"
+  ansible.builtin.debug:
+    msg: "Migrando {{ qm_name }} | objetos: {{ objects_to_process | map(attribute='value') | join(', ') }}"
+
+# ---------------------------------------------------------
+# 1) DUMP dentro do container de origem
+# A imagem do MQ não tem Python, então usamos "raw" (comando puro
+# via docker exec) em vez de "shell"/"command"/"file".
+# ---------------------------------------------------------
+- name: "[{{ qm_name }}] Criar diretório de dump"
+  ansible.builtin.raw: mkdir -p {{ dump_local_dir }}
+  delegate_to: "{{ source_host }}"
+  changed_when: true
+
+- name: "[{{ qm_name }}] Rodar dmpmqcfg para cada tipo de objeto"
+  ansible.builtin.raw: >
+    dmpmqcfg -m {{ qm_name }} -{{ item.flag }} {{ item.value }} -o mqsc
+    > {{ dump_local_dir }}/{{ qm_name }}_{{ item.value }}.mqsc
+  loop: "{{ objects_to_process }}"
+  loop_control:
+    label: "{{ item.value }}"
+  delegate_to: "{{ source_host }}"
+  changed_when: true
+
+# ---------------------------------------------------------
+# 2) TRANSFERÊNCIA via "docker cp", rodando no nó de controle
+# (localhost tem Python, então "command" funciona normal aqui).
+# ---------------------------------------------------------
+- name: "[{{ qm_name }}] Criar pasta local temporária"
+  ansible.builtin.file:
+    path: /tmp/mq_lab_transfer
+    state: directory
+    mode: "0755"
+
+- name: "[{{ qm_name }}] Copiar dumps do container de origem (docker cp)"
+  ansible.builtin.command: >
+    docker cp {{ source_host }}:{{ dump_local_dir }}/{{ qm_name }}_{{ item.value }}.mqsc
+    /tmp/mq_lab_transfer/{{ qm_name }}_{{ item.value }}.mqsc
+  loop: "{{ objects_to_process }}"
+  loop_control:
+    label: "{{ item.value }}"
+  changed_when: true
+
+- name: "[{{ qm_name }}] Criar diretório de destino no container"
+  ansible.builtin.raw: mkdir -p {{ target_dump_dir }}
+  delegate_to: "{{ target_host }}"
+  changed_when: true
+
+- name: "[{{ qm_name }}] Enviar dumps para o container de destino (docker cp)"
+  ansible.builtin.command: >
+    docker cp /tmp/mq_lab_transfer/{{ qm_name }}_{{ item.value }}.mqsc
+    {{ target_host }}:{{ target_dump_dir }}/{{ qm_name }}_{{ item.value }}.mqsc
+  loop: "{{ objects_to_process }}"
+  loop_control:
+    label: "{{ item.value }}"
+  changed_when: true
+
+# ---------------------------------------------------------
+# 3) APPLY dentro do container de destino
+# ---------------------------------------------------------
+- name: "[{{ qm_name }}] Aplicar dumps via runmqsc"
+  ansible.builtin.raw: >
+    runmqsc {{ qm_name }} < {{ target_dump_dir }}/{{ qm_name }}_{{ item.value }}.mqsc
+  loop: "{{ objects_to_process }}"
+  loop_control:
+    label: "{{ item.value }}"
+  delegate_to: "{{ target_host }}"
+  register: apply_result
+  changed_when: true
+
+- name: "[{{ qm_name }}] Resultado"
+  ansible.builtin.debug:
+    var: apply_result.results

@@ -1,0 +1,115 @@
+# =========================================================
+# Laboratório de migração MQ - PVCL01, PVCL02, PVCL03, PVCL04
+# Versão SIMPLES: usa a imagem oficial direto, sem Dockerfile
+# customizado. O Ansible conecta via "docker exec" (plugin
+# community.docker.docker), não via SSH - então não precisamos
+# instalar nada dentro da imagem.
+#
+# ANTIGOS (com objetos já criados):
+#   melpmqs017 -> PVCL01
+#   melpmqs018 -> PVCL02
+#   melpmqs019 -> PVCL03
+#   melpmqs020 -> PVCL04
+#
+# NOVOS (vazios, prontos para receber a migração):
+#   slpcfrbiwms6158 -> PVCL01 (destino)
+#   slpcfrbiwms9658 -> PVCL02 (destino)
+#   slpcfrbiwms4101 -> PVCL03 (destino)
+#   slpcfrbiwms5469 -> PVCL04 (destino)
+# =========================================================
+
+services:
+
+  # ---------------- SERVIDORES ANTIGOS ----------------
+  melpmqs017:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: melpmqs017
+    container_name: melpmqs017
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL01
+    volumes:
+      - ./mqsc-init/PVCL01_objects.mqsc:/etc/mqm/PVCL01_objects.mqsc:ro
+    networks:
+      - mqlab
+
+  melpmqs018:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: melpmqs018
+    container_name: melpmqs018
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL02
+    volumes:
+      - ./mqsc-init/PVCL02_objects.mqsc:/etc/mqm/PVCL02_objects.mqsc:ro
+    networks:
+      - mqlab
+
+  melpmqs019:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: melpmqs019
+    container_name: melpmqs019
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL03
+    volumes:
+      - ./mqsc-init/PVCL03_objects.mqsc:/etc/mqm/PVCL03_objects.mqsc:ro
+    networks:
+      - mqlab
+
+  melpmqs020:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: melpmqs020
+    container_name: melpmqs020
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL04
+    volumes:
+      - ./mqsc-init/PVCL04_objects.mqsc:/etc/mqm/PVCL04_objects.mqsc:ro
+    networks:
+      - mqlab
+
+  # ---------------- SERVIDORES NOVOS (vazios) ----------------
+  slpcfrbiwms6158:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: slpcfrbiwms6158
+    container_name: slpcfrbiwms6158
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL01
+    networks:
+      - mqlab
+
+  slpcfrbiwms9658:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: slpcfrbiwms9658
+    container_name: slpcfrbiwms9658
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL02
+    networks:
+      - mqlab
+
+  slpcfrbiwms4101:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: slpcfrbiwms4101
+    container_name: slpcfrbiwms4101
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL03
+    networks:
+      - mqlab
+
+  slpcfrbiwms5469:
+    image: icr.io/ibm-messaging/mq:latest
+    hostname: slpcfrbiwms5469
+    container_name: slpcfrbiwms5469
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PVCL04
+    networks:
+      - mqlab
+
+networks:
+  mqlab:
+    driver: bridge
