@@ -1,7 +1,7 @@
 ---
 # Uso:
 #   ansible-playbook playbook.yml                       -> migra todos os QMs
-#   ansible-playbook playbook.yml -e "qm_filter=PVCL03"  -> migra só um
+#   ansible-playbook playbook.yml -e "qm_filter=QM_PROD3"  -> migra só um
 - name: Teste de migração MQ via docker exec (sem SSH)
   hosts: localhost
   gather_facts: false

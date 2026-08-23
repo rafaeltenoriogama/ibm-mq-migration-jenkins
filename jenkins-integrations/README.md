@@ -65,7 +65,7 @@ docker compose up -d
 ## Passo 6 — Rodar
 
 No job `mq-migration`, clique em **Build with Parameters**:
-- **QM_FILTER**: escolha o Queue Manager (`PVCL01`, `PVCL02`, etc.)
+- **QM_FILTER**: escolha o Queue Manager (`QM_PROD1`, `QM_PROD2`, etc.)
 - **OBJECT_FILTER**: deixe vazio para migrar tudo, ou digite algo como
   `queue,channel` para migrar só um subconjunto
 

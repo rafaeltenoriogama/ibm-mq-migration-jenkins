@@ -13,15 +13,12 @@ target_dump_dir: /tmp/mq_incoming
 # Neste lab, cada QM está em UM container só (não multi-instance),
 # então cada lista tem 1 item - já corresponde ao nome do container.
 qm_definitions:
-  PVCL01:
-    source_hosts: [melpmqs017]
-    target_hosts: [slpcfrbiwms6158]
-  PVCL02:
-    source_hosts: [melpmqs018]
-    target_hosts: [slpcfrbiwms9658]
-  PVCL03:
-    source_hosts: [melpmqs019]
-    target_hosts: [slpcfrbiwms4101]
-  PVCL04:
-    source_hosts: [melpmqs020]
-    target_hosts: [slpcfrbiwms5469]
+  QM_PROD1:
+    source_hosts: [OLD_SERVER1]
+    target_hosts: [NEW_SERVER1]
+  QM_PROD2:
+    source_hosts: [OLD_SERVER2]
+    target_hosts: [NEW_SERVER2]
+  QM_PROD3:
+    source_hosts: [OLD_SERVER3]
+    target_hosts: [NEW_SERVER3]

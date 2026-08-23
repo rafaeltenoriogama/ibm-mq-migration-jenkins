@@ -1,4 +1,4 @@
-# Laboratório MQ (versão simples) - PVCL01/02/03/04
+# Laboratório MQ (versão simples) - QM_PROD1/QM_PROD2/QM_PROD3
 
 Sem SSH, sem Dockerfile customizado, sem usuário/senha para gerenciar.
 Só duas coisas: **1) sobe os QMs** com docker compose, **2) roda o
@@ -22,7 +22,7 @@ docker compose up -d
 Sem build — usa a imagem oficial direto. Acompanhe até subir:
 
 ```bash
-docker compose logs -f melpmqs017
+docker compose logs -f OLD_SERVER1
 ```
 
 Espere aparecer algo como `Started queue manager`.
@@ -30,34 +30,34 @@ Espere aparecer algo como `Started queue manager`.
 ## Passo 3 — (opcional) Conferir que os objetos "antigos" existem
 
 ```bash
-docker exec melpmqs017 bash -c "echo 'DISPLAY QLOCAL(*)' | runmqsc PVCL01"
+docker exec OLD_SERVER1 bash -c "echo 'DISPLAY QLOCAL(*)' | runmqsc QM_PROD1"
 ```
 
 ## Passo 4 — Rodar a migração de teste
 
 ```bash
 cd ansible-test
-ansible-playbook playbook.yml -e "qm_filter=PVCL03"
+ansible-playbook playbook.yml -e "qm_filter=QM_PROD3"
 ```
 
 Isso roda, tudo via `docker exec` (sem senha, sem SSH):
-1. `dmpmqcfg` dentro do container `melpmqs019` (origem do PVCL03)
-2. Baixa o dump para o computador local e reenvia pro container `slpcfrbiwms4101` (destino)
-3. `runmqsc PVCL03 < arquivo.mqsc` dentro do container de destino
+
+1. `dmpmqcfg` dentro do container `OLD_SERVER3` (origem do QM_PROD3)
+2. Baixa o dump para o computador local e reenvia pro container `NEW_SERVER3` (destino)
+3. `runmqsc QM_PROD3 < arquivo.mqsc` dentro do container de destino
 
 ## Passo 5 — Validar
 
 ```bash
-docker exec slpcfrbiwms4101 bash -c "echo 'DISPLAY QLOCAL(*)' | runmqsc PVCL03"
+docker exec NEW_SERVER3 bash -c "echo 'DISPLAY QLOCAL(*)' | runmqsc QM_PROD3"
 ```
 
-Se aparecerem as mesmas filas do container antigo (`PVCL03.BATCH.IN` etc.),
+Se aparecerem as mesmas filas do container antigo (`QM_PROD3.BATCH.IN` etc.),
 funcionou. Repita para os outros:
 
 ```bash
-ansible-playbook playbook.yml -e "qm_filter=PVCL04"
-ansible-playbook playbook.yml -e "qm_filter=PVCL01"
-ansible-playbook playbook.yml -e "qm_filter=PVCL02"
+ansible-playbook playbook.yml -e "qm_filter=QM_PROD1"
+ansible-playbook playbook.yml -e "qm_filter=QM_PROD2"
 ```
 
 Ou todos de uma vez, sem `-e "qm_filter=..."`.
@@ -101,13 +101,13 @@ authinfo). Para migrar só um subconjunto, use `object_filter`:
 
 ```bash
 # só as filas
-ansible-playbook playbook.yml -e "qm_filter=PVCL01" -e "object_filter=queue"
+ansible-playbook playbook.yml -e "qm_filter=QM_PROD1" -e "object_filter=queue"
 
 # filas e canais
-ansible-playbook playbook.yml -e "qm_filter=PVCL01" -e "object_filter=queue,channel"
+ansible-playbook playbook.yml -e "qm_filter=QM_PROD1" -e "object_filter=queue,channel"
 
 # só tópicos e subscrições
-ansible-playbook playbook.yml -e "qm_filter=PVCL01" -e "object_filter=topic,sub"
+ansible-playbook playbook.yml -e "qm_filter=QM_PROD1" -e "object_filter=topic,sub"
 ```
 
 Valores aceitos: `channel`, `queue`, `topic`, `sub`, `listener`, `authinfo`.

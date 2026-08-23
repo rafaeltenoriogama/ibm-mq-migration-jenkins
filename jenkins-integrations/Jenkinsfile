@@ -11,7 +11,7 @@ pipeline {
     parameters {
         choice(
             name: 'QM_FILTER',
-            choices: ['PVCL01', 'PVCL02', 'PVCL03', 'PVCL04'],
+            choices: ['QM_PROD1', 'QM_PROD2', 'QM_PROD3'],
             description: 'Qual Queue Manager migrar (ver group_vars/all.yml)'
         )
         string(
