@@ -1,4 +1,4 @@
-![Display screen page](./resources/cover_main.png)
+![Display screen page](./resources/readme_cover.png)
 
 # IBM MQ Migration Lab
 
