@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IBM MQ 9.2 → 9.3.0.21 | Standalone Upgrade Runbook</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #171717;
+      --muted: #666;
+      --line: #deded8;
+      --code: #111827;
+      --code-text: #f3f4f6;
+      --ok-bg: #eef8f1;
+      --ok: #176b3a;
+      --warn-bg: #fff7e6;
+      --warn: #805500;
+      --danger-bg: #fff0f0;
+      --danger: #9b1c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    main { max-width: 940px; margin: 0 auto; padding: 48px 22px 80px; }
+    h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.04em; }
+    h2 { margin: 52px 0 14px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 1.45rem; }
+    h3 { margin: 28px 0 10px; font-size: 1.05rem; }
+    p { margin: 10px 0; }
+    .lead { color: var(--muted); font-size: 1.08rem; max-width: 780px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 8px; }
+    .tag { border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: .84rem; background: var(--card); }
+    .box { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 16px 0; background: var(--card); }
+    .ok { background: var(--ok-bg); border-color: #cae8d3; color: var(--ok); }
+    .warn { background: var(--warn-bg); border-color: #f0d6a3; color: var(--warn); }
+    .danger { background: var(--danger-bg); border-color: #efcaca; color: var(--danger); }
+    pre {
+      margin: 12px 0 20px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      border-radius: 10px;
+      background: var(--code);
+      color: var(--code-text);
+      font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      border: 1px solid #202938;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .inline { background: #ecece8; border-radius: 5px; padding: 2px 5px; }
+    ol.steps { padding-left: 1.4rem; }
+    ol.steps > li { margin: 12px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0; background: var(--card); }
+    th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 10px 8px; vertical-align: top; }
+    th { font-size: .86rem; color: var(--muted); font-weight: 650; }
+    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    .small { font-size: .9rem; color: var(--muted); }
+    .check { font-weight: 700; }
+    .phase { display: inline-block; font-size: .76rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 4px; }
+    footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: .88rem; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="phase">Runbook operacional</div>
+  <h1>IBM MQ 9.2 → 9.3.0.21</h1>
+  <p class="lead">Upgrade side-by-side de Queue Manager standalone em Linux/RHEL. A ideia é preparar todo o código 9.3 enquanto o Queue Manager continua em 9.2 e deixar o downtime apenas para parada, backup físico, <code class="inline">setmqm</code> e primeiro start em 9.3.</p>
+
+  <div class="meta">
+    <span class="tag">Origem: MQ 9.2.x</span>
+    <span class="tag">Destino: MQ 9.3.0.21</span>
+    <span class="tag">Linux / RHEL</span>
+    <span class="tag">Standalone QM</span>
+    <span class="tag">Side-by-side</span>
+  </div>
+
+  <div class="box warn"><strong>Antes de usar:</strong> troque <code>&lt;QM_NAME&gt;</code>, <code>&lt;SERVICE&gt;</code> e confirme os caminhos de dados/logs do seu ambiente. Não assuma que a nova instalação se chama <code>Installation4</code>; confirme com <code>dspmqinst</code>.</div>
+
+  <h2>0. Variáveis do runbook</h2>
+  <p>Defina uma vez para reduzir erro de digitação.</p>
+<pre>QM="&lt;QM_NAME&gt;"
+SERVICE="&lt;SERVICE&gt;"                     # Ex.: websphere-MQ-RFDF01.service
+OLD="/tech/WebSphere-MQ-9.2.0.4"
+NEW="/tech/WebSphere-MQ-9.3.0.21"
+BKP="/save/MQv92"
+RPMDIR="$BKP/rpm"
+SUFFIX="MQ93021"                         # somente letras/números, máx. 16 chars</pre>
+
+  <h2>1. PreFlight</h2>
+  <div class="box ok"><strong>QM pode continuar RUNNING nesta fase.</strong></div>
+
+  <h3>1.1 Confirmar servidor, Queue Managers e instalações</h3>
+<pre>hostname
+$OLD/bin/dspmq -o installation -o status
+$OLD/bin/dspmqinst
+cat /etc/opt/mqm/mqinst.ini</pre>
+
+  <h3>1.2 Executar mqconfig</h3>
+<pre>cd /tech/WebSphere-MQ-latest/bin
+./mqconfig</pre>
+  <p>Se houver <strong>FAIL</strong>, corrija somente o item indicado pelo <code>mqconfig</code> e conforme o padrão do time de OS.</p>
+
+  <h3>Exemplo: ajuste de sysctl usado no ambiente</h3>
+  <div class="box warn">Estes valores são um exemplo do seu ambiente, não uma correção universal para qualquer <em>MAX FILES</em>. Se o problema for limite por processo/usuário, confira também <code>ulimit -n</code> e os arquivos de <code>/etc/security/limits.d/</code>.</div>
+<pre>cd /etc/sysctl.d/
+ls -ltr
+vi 99-sysctl.conf
+
+# ADD / CONFIRM
+fs.file-max = 524288
+kernel.threads-max = 32768
+
+# Apply this file
+sysctl -p /etc/sysctl.d/99-sysctl.conf
+
+# Alternative: reload all sysctl configuration
+# sysctl --system
+
+# Recheck
+cd /tech/WebSphere-MQ-latest/bin
+./mqconfig</pre>
+
+  <h3>1.3 Criar diretórios de trabalho</h3>
+<pre>mkdir -p "$BKP" "$RPMDIR"
+mkdir -p "$NEW"
+
+# Preserve the same owner/mode used by the current installation directory
+chown --reference="$OLD" "$NEW"
+chmod --reference="$OLD" "$NEW"
+
+ls -ld "$OLD" "$NEW" "$BKP" "$RPMDIR"</pre>
+  <div class="box warn">Evite fazer <code>chown -R mqm:mqm</code> no diretório inteiro do produto sem uma razão específica. Os RPMs do MQ devem manter os owners/modes dos arquivos que instalam.</div>
+
+  <h3>1.4 Confirmar dependências para multiple installations</h3>
+<pre>command -v pax
+command -v rpmbuild</pre>
+  <p class="small">Se faltarem, solicite/instale os pacotes necessários antes de continuar. A IBM exige ferramentas de repackaging para instalações MQ adicionais via RPM.</p>
+
+  <h2>2. Backup lógico da configuração</h2>
+  <div class="box ok"><strong>QM deve estar RUNNING.</strong> Este é o momento para <code>dmpmqcfg</code>.</div>
+<pre>sudo -iu mqm
+
+mkdir -p "$BKP/$QM"
+
+# Objects / attributes
+dmpmqcfg -m "$QM" -a &gt; "$BKP/$QM/${QM}.mqsc"
+
+# Authorities as setmqaut commands
+dmpmqcfg -m "$QM" -x authrec -o setmqaut \
+  &gt; "$BKP/$QM/${QM}_setmqaut.sh"
+
+# Channel authentication records
+dmpmqcfg -m "$QM" -x chlauth \
+  &gt; "$BKP/$QM/${QM}_chlauth.mqsc"
+
+exit</pre>
+
+  <h3>Guardar inventário atual</h3>
+<pre>$OLD/bin/dspmq -o installation -o status &gt; "$BKP/dspmq-before.txt"
+$OLD/bin/dspmqinst &gt; "$BKP/dspmqinst-before.txt"
+rpm -qa | grep '^MQSeries' | sort &gt; "$BKP/rpm-before.txt"
+cp -p /etc/opt/mqm/mqinst.ini "$BKP/mqinst.ini.before"</pre>
+
+  <h2>3. Download dos binários</h2>
+  <div class="box ok"><strong>QM ainda pode continuar RUNNING em 9.2.</strong></div>
+  <p>Gere o token no Artifactory. Evite colocar o token diretamente no histórico do shell.</p>
+<pre>cd "$RPMDIR"
+
+wget --user=bpk32mk --ask-password \
+'https://artifactory.mycloud.intrabpce.fr:443/artifactory/BIWMS-generic-ibm-websphere-upgrade/BIWMS/UPGRADE/IBM_MQ_9.3.0.15_LNX_X86-64.tar.gz'
+
+wget --user=bpk32mk --ask-password \
+'https://artifactory.mycloud.intrabpce.fr:443/artifactory/BIWMS-generic-ibm-websphere-upgrade/BIWMS/UPGRADE/9.3.0-IBM-MQ-LinuxX64-FP0021.tar.gz'
+
+ls -lh</pre>
+
+  <h2>4. Instalar o código base 9.3 side-by-side</h2>
+  <div class="box ok"><strong>QM 9.2 continua RUNNING.</strong> Ainda não estamos migrando o Queue Manager.</div>
+
+  <h3>4.1 Extrair e aceitar licença</h3>
+<pre>cd "$RPMDIR"
+tar -xzf IBM_MQ_9.3.0.15_LNX_X86-64.tar.gz
+
+cd "$RPMDIR/MQServer"
+./mqlicense.sh -accept</pre>
+
+  <h3>4.2 Criar RPMs únicos para a segunda instalação</h3>
+  <p>Como o servidor já possui MQ 9.2, não instale os RPMs IBM originais com o mesmo nome. Use <code>crtmqpkg</code>.</p>
+<pre>cd "$RPMDIR/MQServer"
+./crtmqpkg "$SUFFIX" "$NEW"</pre>
+  <p>O comando informa o diretório onde criou os RPMs repackaged. Entre nesse diretório.</p>
+<pre>cd &lt;OUTPUT_DIRECTORY_FROM_crtmqpkg&gt;
+ls -lh MQSeries*.rpm</pre>
+
+  <h3>4.3 Instalar os mesmos componentes necessários no servidor</h3>
+  <div class="box warn">Use os RPMs <strong>gerados pelo crtmqpkg</strong>. A lista abaixo é um exemplo baseado no seu runbook. Confirme os componentes atuais em <code>$BKP/rpm-before.txt</code>.</div>
+<pre>rpm -ivh \
+  MQSeriesRuntime_${SUFFIX}-*.rpm \
+  MQSeriesServer_${SUFFIX}-*.rpm \
+  MQSeriesJRE_${SUFFIX}-*.rpm \
+  MQSeriesJava_${SUFFIX}-*.rpm \
+  MQSeriesSamples_${SUFFIX}-*.rpm \
+  MQSeriesMan_${SUFFIX}-*.rpm \
+  MQSeriesGSKit_${SUFFIX}-*.rpm \
+  MQSeriesSDK_${SUFFIX}-*.rpm \
+  MQSeriesClient_${SUFFIX}-*.rpm</pre>
+  <p class="small">Se o pacote de mensagens em francês fizer parte do padrão do servidor, instale também o RPM repackaged correspondente a <code>MQSeriesMsg_fr</code>, confirmando primeiro o nome exato com <code>ls</code>.</p>
+
+  <h2>5. Aplicar maintenance 9.3.0.21 na nova instalação</h2>
+  <div class="box ok"><strong>QM 9.2 ainda pode continuar RUNNING</strong>, porque estamos aplicando maintenance somente à nova instalação 9.3, sem QMs associados a ela.</div>
+
+<pre>cd "$RPMDIR"
+mkdir -p fp0021
+cd fp0021
+
+tar -xzf ../9.3.0-IBM-MQ-LinuxX64-FP0021.tar.gz
+ls -la</pre>
+
+  <p>Para uma instalação adicional, use <code>crtmqfp</code> com o <strong>mesmo suffix</strong> utilizado no <code>crtmqpkg</code>.</p>
+<pre>cd &lt;DIRECTORY_CONTAINING_crtmqfp&gt;
+./crtmqfp "$SUFFIX" "$NEW"
+
+cd &lt;OUTPUT_DIRECTORY_FROM_crtmqfp&gt;
+ls -lh MQSeries*.rpm</pre>
+
+  <div class="box warn">Aplique somente updates correspondentes aos componentes já instalados. O procedimento IBM de maintenance via RPM usa <code>rpm -ivh</code> nos RPMs de update; não substitua por <code>-Uvh</code> sem validar o packaging do seu ambiente.</div>
+<pre># Example: install the generated update RPMs that match your installed components
+rpm -ivh &lt;GENERATED_9.3.0.21_UPDATE_RPMS&gt;</pre>
+
+  <h3>5.1 Validar a nova instalação antes do downtime</h3>
+<pre>$NEW/bin/dspmqver
+$NEW/bin/dspmqinst
+rpm -qa | grep '^MQSeries' | sort | tee "$BKP/rpm-after-93021.txt"</pre>
+  <p><strong>Não continue</strong> até confirmar que <code>$NEW/bin/dspmqver</code> mostra o nível esperado <strong>9.3.0.21</strong>.</p>
+
+  <h2>6. Início da janela de downtime</h2>
+  <div class="box danger"><strong>DOWNTIME COMEÇA AQUI.</strong> Coloque o host/QM em maintenance no Zabbix e pare aplicações que dependem do Queue Manager.</div>
+
+  <h3>6.1 Parar o Queue Manager</h3>
+  <p>Se o serviço systemd é o método oficial do ambiente:</p>
+<pre>systemctl stop "$SERVICE"
+$OLD/bin/dspmq -o installation -o status</pre>
+  <p>O esperado é <code>STATUS(Ended normally)</code>.</p>
+  <p>Se não houver um serviço systemd confiável para a parada:</p>
+<pre>sudo -iu mqm "$OLD/bin/endmqm" -w "$QM"
+$OLD/bin/dspmq -o installation -o status</pre>
+
+  <div class="box danger"><strong>Não faça o backup físico nem execute setmqm enquanto o QM estiver RUNNING.</strong></div>
+
+  <h2>7. Backup físico com o QM parado</h2>
+  <p>Confirme os caminhos reais de dados e logs do seu ambiente. Os exemplos abaixo mantêm os paths usados no runbook original.</p>
+<pre>date &gt; "$BKP/${QM}_cold-backup.timestamp"
+
+# MQ logs - site specific path
+tar -cpzvf "$BKP/${QM}.log.bkp.tar.gz" /logs/
+
+# Queue manager/application data - site specific path
+tar -cpzvf "$BKP/${QM}.qmgr.bkp.tar.gz" /appli/
+
+# MQ shared data / configuration
+tar -cpzvf "$BKP/${QM}.VarMqm.bkp.tar.gz" /var/mqm/
+
+# Site scripts/configuration for mqm user
+tar -cpzvf "$BKP/${QM}.HomeMqm.bkp.tar.gz" /home/mqm/</pre>
+  <div class="box warn">Para recuperação consistente, dados e recovery logs do QM precisam representar o mesmo ponto no tempo. Se <code>/logs</code> ou <code>/appli</code> não forem os caminhos reais deste servidor, corrija antes de continuar.</div>
+
+  <h2>8. Associar o Queue Manager à instalação 9.3</h2>
+  <h3>8.1 Descobrir o nome real da nova instalação</h3>
+<pre>$NEW/bin/dspmqinst</pre>
+  <p>Exemplo: se o output mostrar <code>Installation4</code>, use exatamente esse nome abaixo.</p>
+<pre>NEW_INST="Installation4"   # EXAMPLE — use the value returned by dspmqinst</pre>
+
+  <h3>8.2 Executar setmqm a partir da NOVA instalação</h3>
+<pre>sudo -iu mqm "$NEW/bin/setmqm" -m "$QM" -n "$NEW_INST"
+
+$NEW/bin/dspmq -o installation -o status</pre>
+  <p>Confirme que o QM agora aparece associado à nova instalação.</p>
+
+  <h2>9. Atualizar symlink / systemd</h2>
+  <h3>9.1 Atualizar o symlink</h3>
+<pre>readlink -f /tech/WebSphere-MQ-latest
+ln -sfn "$NEW" /tech/WebSphere-MQ-latest
+readlink -f /tech/WebSphere-MQ-latest</pre>
+
+  <h3>9.2 Conferir o serviço</h3>
+<pre>systemctl cat "$SERVICE" | grep -E 'ExecStart|ExecStop'</pre>
+  <p>Se o unit já usa <code>/tech/WebSphere-MQ-latest</code>, não é necessário editar paths. Se ele estiver hardcoded em <code>9.2.0.4</code>, atualize para o symlink ou para o novo path e então:</p>
+<pre>systemctl daemon-reload</pre>
+
+  <h2>10. Primeiro start em MQ 9.3</h2>
+  <div class="box danger"><strong>PONTO DE NÃO RETORNO DA MIGRAÇÃO:</strong> o primeiro start do QM com o código 9.3 realiza a migração necessária. Depois que o QM foi migrado, não faça <code>setmqm</code> de volta para 9.2 como rollback. A recuperação para 9.2 exige restaurar o estado anterior à migração.</div>
+
+  <p>Se o serviço systemd aponta corretamente para a instalação 9.3:</p>
+<pre>systemctl start "$SERVICE"
+systemctl status "$SERVICE" --no-pager</pre>
+
+  <p>Valide imediatamente:</p>
+<pre>$NEW/bin/dspmq -o installation -o status
+sudo -iu mqm "$NEW/bin/runmqsc" "$QM" &lt;&lt;'MQSC'
+DISPLAY QMGR CMDLEVEL
+DISPLAY LSSTATUS(*) STATUS
+DISPLAY CHSTATUS(*) STATUS
+END
+MQSC
+
+tail -n 100 "/var/mqm/qmgrs/$QM/errors/AMQERR01.LOG"</pre>
+
+  <h2>11. Tornar a instalação 9.3 primary</h2>
+  <div class="box warn"><strong>Isso não é necessário para o setmqm/migração do QM.</strong> Faça depois que os QMs que devem migrar neste servidor estiverem validados. Em servidor com vários QMs, normalmente deixe para depois de mover todos eles.</div>
+
+<pre>$NEW/bin/dspmqinst</pre>
+  <p>Se a política do ambiente é tornar a nova instalação primary:</p>
+<pre># Example only: confirm the real old installation name first
+OLD_INST="Installation3"
+
+$OLD/bin/setmqinst -x -n "$OLD_INST"
+$NEW/bin/setmqinst -i -p "$NEW"
+
+$NEW/bin/dspmqinst</pre>
+
+  <h2>12. Validação final</h2>
+  <ol class="steps">
+    <li><span class="check">✓</span> <code>dspmq</code> mostra <code>Running</code> e a nova instalação.</li>
+    <li><span class="check">✓</span> <code>$NEW/bin/dspmqver</code> mostra <strong>9.3.0.21</strong>.</li>
+    <li><span class="check">✓</span> Sem erros críticos novos no <code>AMQERR01.LOG</code>.</li>
+    <li><span class="check">✓</span> Listener(s) e channels esperados estão operacionais.</li>
+    <li><span class="check">✓</span> Aplicações conseguem reconectar e fazer o smoke test.</li>
+    <li><span class="check">✓</span> Serviço systemd está ativo e habilitado conforme padrão do ambiente.</li>
+    <li><span class="check">✓</span> Remover maintenance do Zabbix somente após validação funcional.</li>
+  </ol>
+
+  <h2>Resumo: quando o QM precisa ficar parado?</h2>
+  <table>
+    <thead><tr><th>Etapa</th><th>QM</th></tr></thead>
+    <tbody>
+      <tr><td>mqconfig / checks</td><td> pode ficar <strong>RUNNING</strong></td></tr>
+      <tr><td>dmpmqcfg</td><td><strong>RUNNING</strong></td></tr>
+      <tr><td>download / instalação do novo código 9.3</td><td> pode ficar <strong>RUNNING em 9.2</strong></td></tr>
+      <tr><td>aplicar 9.3.0.21 à nova instalação ainda sem QMs</td><td> pode ficar <strong>RUNNING em 9.2</strong></td></tr>
+      <tr><td>backup físico de dados + logs</td><td><strong>STOPPED</strong></td></tr>
+      <tr><td>setmqm para a instalação 9.3</td><td><strong>STOPPED</strong></td></tr>
+      <tr><td>primeiro start em 9.3</td><td>inicia e <strong>migra</strong> o QM</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Referências — IBM Official</h2>
+  <ol>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=imlur-installing-additional-mq-installations-linux-using-rpm-command">Installing additional IBM MQ installations on Linux using the rpm command</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=methods-multiple-mq-installations">Multiple IBM MQ installations</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3?topic=installations-associating-queue-manager-installation">Associating a queue manager with an installation</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=data-backing-up-queue-manager">Backing up queue manager data</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=data-backing-up-queue-manager-configuration">Backing up queue manager configuration</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=methods-queue-manager-migration">Queue manager migration</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=linux-migrating-queue-manager-later-version-aix">Migrating a queue manager to a later version on AIX and Linux</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=linux-staging-maintenance-level-updates">Staging maintenance level updates on Linux</a></li>
+    <li><a href="https://www.ibm.com/docs/en/ibm-mq/9.3.x?topic=reference-setmqinst-set-mq-installation">setmqinst — set IBM MQ installation</a></li>
+  </ol>
+
+  <footer>
+    Runbook focado em migração side-by-side de IBM MQ em Linux/RHEL. Caminhos internos, nomes de serviços, políticas de Zabbix, Artifactory e componentes RPM são específicos do ambiente e devem ser confirmados antes da execução em produção.
+  </footer>
+</main>
+</body>
+</html>
